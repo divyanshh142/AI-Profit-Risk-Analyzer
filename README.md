@@ -1,1 +1,1 @@
-# AI-Profit-Risk-Analyzer
+# AI‑Based E‑Commerce Profit & Risk Analyzer for SMEs
