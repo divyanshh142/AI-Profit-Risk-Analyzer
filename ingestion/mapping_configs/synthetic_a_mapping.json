@@ -1,0 +1,54 @@
+{
+  "tenant": "clean_co",
+  "source_type": "synthetic",
+  "currency": "USD",
+  "tables": {
+    "products": {
+      "source_file": "products.csv",
+      "column_map": {
+        "product_id": "sku_id",
+        "category": "category",
+        "unit_cost": "unit_cost",
+        "list_price": "list_price"
+      }
+    },
+    "customers": {
+      "source_file": "customers.csv",
+      "column_map": {
+        "customer_id": "customer_id",
+        "region": "region"
+      }
+    },
+    "orders": {
+      "source_file": "orders.csv",
+      "column_map": {
+        "order_id": "order_id",
+        "customer_id": "customer_id",
+        "order_date": "order_date"
+      }
+    },
+    "order_items": {
+      "source_file": "order_items.csv",
+      "column_map": {
+        "order_id": "order_id",
+        "order_line_id": "order_line_id",
+        "product_id": "sku_id",
+        "vendor_id": "vendor_id",
+        "quantity": "quantity",
+        "selling_price": "selling_price",
+        "discount_rate": "discount_rate",
+        "shipping_cost": "shipping_cost",
+        "unit_cost": "unit_cost",
+        "estimated_delivery_date": "estimated_delivery_date",
+        "actual_delivery_date": "actual_delivery_date",
+        "is_late_delivery": "is_late_delivery",
+        "is_returned": "is_returned",
+        "return_reason": "return_reason"
+      }
+    }
+  },
+  "notes": [
+    "This tenant has GENUINE is_returned ground truth, unlike Olist's proxy.",
+    "unit_cost is real here -> net_profit can be computed properly instead of the Olist approximation."
+  ]
+}

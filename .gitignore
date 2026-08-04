@@ -1,0 +1,25 @@
+# Data
+ingestion/raw_data/
+*.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Java
+target/
+*.class
+
+# Env
+.env
+*.env.local
+
+# OS
+.DS_Store

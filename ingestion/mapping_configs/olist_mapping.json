@@ -1,0 +1,47 @@
+{
+  "tenant": "olist",
+  "source_type": "olist",
+  "currency": "BRL",
+  "tables": {
+    "orders": {
+      "source_file": "olist_orders_dataset.csv",
+      "column_map": {
+        "order_id": "order_id",
+        "customer_id": "customer_id",
+        "order_purchase_timestamp": "order_date"
+      }
+    },
+    "order_items": {
+      "source_file": "olist_order_items_dataset.csv",
+      "column_map": {
+        "order_id": "order_id",
+        "order_item_id": "order_line_id",
+        "product_id": "sku_id",
+        "seller_id": "vendor_id",
+        "price": "selling_price",
+        "freight_value": "shipping_cost",
+        "shipping_limit_date": "estimated_delivery_date"
+      }
+    },
+    "customers": {
+      "source_file": "olist_customers_dataset.csv",
+      "column_map": {
+        "customer_id": "customer_id",
+        "customer_state": "region"
+      }
+    },
+    "products": {
+      "source_file": "olist_products_dataset.csv",
+      "column_map": {
+        "product_id": "sku_id",
+        "product_category_name": "category",
+        "product_weight_g": "weight_kg_raw_grams"
+      }
+    }
+  },
+  "notes": [
+    "Olist has NO ground-truth return flag. is_returned defaults to NULL/0 and is_returned_proxy should be set TRUE if you derive a signal from review_score <= 2.",
+    "weight_kg_raw_grams needs /1000 conversion during load, not a straight rename.",
+    "actual_delivery_date should come from order_delivered_customer_date in the orders table, not order_items — join it in during load, not in this map."
+  ]
+}

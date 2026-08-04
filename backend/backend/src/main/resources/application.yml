@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/profit_copilot
+    username: copilot
+    password: copilot_dev_pw
+  ai:
+    google:
+      genai:
+        api-key: ${GOOGLE_API_KEY}
+        project-id: not-used-in-api-key-mode
+        chat:
+          options:
+            model: models/gemini-flash-latest
+        embedding:
+          options:
+            model: text-embedding-004
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 768
+        initialize-schema: true
+        table-name: sku_report_embeddings_vs
+
+fastapi:
+  base-url: http://localhost:8000
+
+server:
+  port: 8080
