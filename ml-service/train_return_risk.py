@@ -19,6 +19,19 @@ DB_URL = os.environ.get(
 )
 
 
+def mark_capability(engine, tenant_id: int, column: str):
+    """Flip one supports_* flag on in tenant_capabilities once this job succeeds."""
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"""
+                INSERT INTO tenant_capabilities (tenant_id, {column})
+                VALUES (:tid, TRUE)
+                ON CONFLICT (tenant_id) DO UPDATE SET {column} = TRUE
+            """),
+            {"tid": tenant_id},
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tenant-id", type=int, default=2)
@@ -68,7 +81,10 @@ def main():
                 """),
                 {"tid": args.tenant_id, "pid": int(row["product_pk"]), "score": float(row["risk_score"])},
             )
-    print(f"Wrote {len(product_scores)} return_risk_scores rows. Done.")
+    print(f"Wrote {len(product_scores)} return_risk_scores rows.")
+
+    mark_capability(engine, args.tenant_id, "supports_return_risk")
+    print(f"Marked tenant_id={args.tenant_id} as supports_return_risk=TRUE. Done.")
 
 
 if __name__ == "__main__":

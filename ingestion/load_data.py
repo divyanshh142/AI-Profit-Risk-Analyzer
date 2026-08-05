@@ -27,6 +27,19 @@ def load_config(config_path: str) -> dict:
         return json.load(f)
 
 
+def mark_capability(engine, tenant_id: int, column: str):
+    """Flip one supports_* flag on in tenant_capabilities."""
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"""
+                INSERT INTO tenant_capabilities (tenant_id, {column})
+                VALUES (:tid, TRUE)
+                ON CONFLICT (tenant_id) DO UPDATE SET {column} = TRUE
+            """),
+            {"tid": tenant_id},
+        )
+
+
 def get_or_create_tenant(engine, name: str, source_type: str, currency: str) -> int:
     with engine.begin() as conn:
         row = conn.execute(
@@ -162,16 +175,31 @@ def insert_orders(engine, tenant_id: int, orders_df: pd.DataFrame):
 
 
 # ------------------------------------------------------------- order_items
-def insert_order_items(engine, tenant_id: int, order_items_df: pd.DataFrame, orders_raw_df: pd.DataFrame):
+def insert_order_items(
+    engine,
+    tenant_id: int,
+    order_items_df: pd.DataFrame,
+    orders_raw_df: pd.DataFrame,
+    raw_delivery_col: str = "order_delivered_customer_date",
+):
     order_pk_map = fetch_pk_map(engine, "orders", "order_pk", "order_id", tenant_id)
     product_pk_map = fetch_pk_map(engine, "products", "product_pk", "sku_id", tenant_id)
     vendor_pk_map = fetch_pk_map(engine, "vendors", "vendor_pk", "vendor_id", tenant_id)
 
     # actual_delivery_date lives in the RAW orders file, not order_items —
-    # merge it in by order_id before inserting.
-    delivery_lookup = orders_raw_df.set_index("order_id")["order_delivered_customer_date"].to_dict()
+    # merge it in by order_id before inserting. Column name is configurable
+    # (via the mapping config's "raw_delivery_column") since it's a raw
+    # source column, not a canonical one — Olist calls it
+    # order_delivered_customer_date, other sources may not.
+    if raw_delivery_col not in orders_raw_df.columns:
+        print(f"    [warn] raw orders file has no '{raw_delivery_col}' column; "
+              f"actual_delivery_date / is_late_delivery will be left NULL")
+        delivery_lookup = {}
+    else:
+        delivery_lookup = orders_raw_df.set_index("order_id")[raw_delivery_col].to_dict()
 
     inserted = 0
+    late_delivery_known = 0  # rows where we could actually compute is_late_delivery
     with engine.begin() as conn:
         for _, row in order_items_df.iterrows():
             order_pk = order_pk_map.get(row["order_id"])
@@ -186,6 +214,7 @@ def insert_order_items(engine, tenant_id: int, order_items_df: pd.DataFrame, ord
             is_late = None
             if pd.notna(est_date) and actual_date and pd.notna(actual_date):
                 is_late = pd.to_datetime(actual_date) > pd.to_datetime(est_date)
+                late_delivery_known += 1
 
             selling_price = row.get("selling_price") or 0
             shipping_cost = row.get("shipping_cost") or 0
@@ -223,6 +252,7 @@ def insert_order_items(engine, tenant_id: int, order_items_df: pd.DataFrame, ord
             )
             inserted += 1
     print(f"    -> inserted {inserted} order_items (of {len(order_items_df)} rows seen)")
+    return inserted, late_delivery_known
 
 
 def main():
@@ -278,7 +308,14 @@ def main():
         print("  Cleaning order_items...")
         mapped["order_items"] = clean_order_items(mapped["order_items"])
         print("  Inserting order_items...")
-        insert_order_items(engine, tenant_id, mapped["order_items"], raw_orders_df)
+        raw_delivery_col = config.get("raw_delivery_column", "order_delivered_customer_date")
+        _, late_delivery_known = insert_order_items(
+            engine, tenant_id, mapped["order_items"], raw_orders_df, raw_delivery_col
+        )
+        if late_delivery_known > 0:
+            mark_capability(engine, tenant_id, "supports_late_delivery")
+            print(f"  Marked tenant_id={tenant_id} as supports_late_delivery=TRUE "
+                  f"({late_delivery_known} rows had a computable is_late_delivery).")
 
     print("\nDone. Check pgAdmin to see the row counts in each canonical table.")
 

@@ -21,6 +21,19 @@ DB_URL = os.environ.get(
 MIN_ORDERS_FOR_SCORE = 5  # don't score vendors with too few orders to be meaningful
 
 
+def mark_capability(engine, tenant_id: int, column: str):
+    """Flip one supports_* flag on in tenant_capabilities once this job succeeds."""
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"""
+                INSERT INTO tenant_capabilities (tenant_id, {column})
+                VALUES (:tid, TRUE)
+                ON CONFLICT (tenant_id) DO UPDATE SET {column} = TRUE
+            """),
+            {"tid": tenant_id},
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tenant-id", type=int, default=1)
@@ -70,6 +83,10 @@ def main():
     print(f"Wrote {len(df)} vendor risk scores.")
     print("\nTop 5 riskiest vendors:")
     print(df.sort_values("risk_score", ascending=False).head(5)[["vendor_pk", "total_orders", "late_rate"]])
+
+    if len(df) > 0:
+        mark_capability(engine, args.tenant_id, "supports_vendor_risk")
+        print(f"\nMarked tenant_id={args.tenant_id} as supports_vendor_risk=TRUE. Done.")
 
 
 if __name__ == "__main__":

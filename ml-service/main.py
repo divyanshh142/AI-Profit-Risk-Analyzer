@@ -20,13 +20,48 @@ app = FastAPI(title="Supply Chain Copilot API")
 engine = create_engine(DB_URL)
 
 
+def require_capability(tenant_id: int, column: str, feature_label: str):
+    """Raise a clear 409 if this tenant's data never earned this capability flag,
+    instead of letting the caller get a bare 404 and guess why."""
+    query = text(f"SELECT {column} FROM tenant_capabilities WHERE tenant_id = :tid")
+    with engine.begin() as conn:
+        row = conn.execute(query, {"tid": tenant_id}).fetchone()
+    if not row or not row[0]:
+        raise HTTPException(
+            409,
+            f"tenant_id={tenant_id} does not support {feature_label} "
+            f"(no successful job has marked {column}=TRUE for this tenant yet).",
+        )
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
+@app.get("/capabilities/{tenant_id}")
+def get_capabilities(tenant_id: int):
+    query = text("""
+        SELECT supports_demand, supports_late_delivery, supports_return_risk,
+               supports_vendor_risk, supports_profit
+        FROM tenant_capabilities WHERE tenant_id = :tid
+    """)
+    with engine.begin() as conn:
+        row = conn.execute(query, {"tid": tenant_id}).fetchone()
+    if not row:
+        return {
+            "tenant_id": tenant_id, "supports_demand": False, "supports_late_delivery": False,
+            "supports_return_risk": False, "supports_vendor_risk": False, "supports_profit": False,
+        }
+    return {
+        "tenant_id": tenant_id, "supports_demand": row[0], "supports_late_delivery": row[1],
+        "supports_return_risk": row[2], "supports_vendor_risk": row[3], "supports_profit": row[4],
+    }
+
+
 @app.get("/forecast/{sku_id}")
 def get_forecast(sku_id: str, tenant_id: int = 1):
+    require_capability(tenant_id, "supports_demand", "demand forecasting")
     query = text("""
         SELECT df.week_start, df.predicted_demand, df.model_version
         FROM demand_forecasts df
@@ -43,6 +78,7 @@ def get_forecast(sku_id: str, tenant_id: int = 1):
 
 @app.get("/return-risk/{sku_id}")
 def get_return_risk(sku_id: str, tenant_id: int = 2):
+    require_capability(tenant_id, "supports_return_risk", "return-risk scoring")
     query = text("""
         SELECT rr.risk_score, rr.model_version
         FROM return_risk_scores rr
@@ -59,6 +95,7 @@ def get_return_risk(sku_id: str, tenant_id: int = 2):
 
 @app.get("/vendor-risk/{vendor_id}")
 def get_vendor_risk(vendor_id: str, tenant_id: int = 1):
+    require_capability(tenant_id, "supports_vendor_risk", "vendor-risk scoring")
     query = text("""
         SELECT vr.late_rate, vr.risk_score
         FROM vendor_risk_scores vr
@@ -75,6 +112,7 @@ def get_vendor_risk(vendor_id: str, tenant_id: int = 1):
 
 @app.get("/profit-summary")
 def get_profit_summary(tenant_id: int = 1, limit: int = 10, order: str = "top"):
+    require_capability(tenant_id, "supports_profit", "profit summaries")
     direction = "DESC" if order == "top" else "ASC"
     query = text(f"""
         SELECT p.sku_id, s.forecast_demand, s.expected_returns,
@@ -100,6 +138,8 @@ def get_profit_summary(tenant_id: int = 1, limit: int = 10, order: str = "top"):
 def risky_products(tenant_id_forecast: int = 1, tenant_id_risk: int = 2, limit: int = 10):
     """Blends Olist demand forecast with synthetic-model category-level return risk
     (can't match by SKU ID across tenants — different catalogs — so we match by category)."""
+    require_capability(tenant_id_forecast, "supports_demand", "demand forecasting")
+    require_capability(tenant_id_risk, "supports_return_risk", "return-risk scoring")
     query = text("""
         SELECT p.sku_id, p.category, df.predicted_demand, cat_risk.avg_risk_score
         FROM demand_forecasts df

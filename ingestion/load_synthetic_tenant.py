@@ -26,6 +26,19 @@ def load_config(path):
         return json.load(f)
 
 
+def mark_capability(engine, tenant_id: int, column: str):
+    """Flip one supports_* flag on in tenant_capabilities."""
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"""
+                INSERT INTO tenant_capabilities (tenant_id, {column})
+                VALUES (:tid, TRUE)
+                ON CONFLICT (tenant_id) DO UPDATE SET {column} = TRUE
+            """),
+            {"tid": tenant_id},
+        )
+
+
 def get_or_create_tenant(engine, name, source_type, currency):
     with engine.begin() as conn:
         row = conn.execute(text("SELECT tenant_id FROM tenants WHERE name = :n"), {"n": name}).fetchone()
@@ -152,6 +165,7 @@ def insert_order_items(engine, tenant_id, df):
     vendor_map = fetch_pk_map(engine, "vendors", "vendor_pk", "vendor_id", tenant_id) if "vendor_id" in df.columns else {}
 
     inserted = 0
+    late_delivery_known = 0  # rows where the source actually gave us is_late_delivery
     with engine.begin() as conn:
         for _, row in df.iterrows():
             order_pk = order_map.get(row["order_id"])
@@ -159,6 +173,9 @@ def insert_order_items(engine, tenant_id, df):
             if order_pk is None or product_pk is None:
                 continue
             vendor_pk = vendor_map.get(row.get("vendor_id")) if vendor_map else None
+
+            if row.get("is_late_delivery") is not None and pd.notna(row.get("is_late_delivery")):
+                late_delivery_known += 1
 
             selling_price = row.get("selling_price") or 0
             quantity = row.get("quantity") or 1
@@ -204,6 +221,7 @@ def insert_order_items(engine, tenant_id, df):
             )
             inserted += 1
     print(f"    -> {inserted} order_items (of {len(df)} rows seen)")
+    return inserted, late_delivery_known
 
 
 def main():
@@ -247,7 +265,11 @@ def main():
         print("  Cleaning order_items...")
         mapped["order_items"] = clean_order_items(mapped["order_items"])
         print("  Inserting order_items...")
-        insert_order_items(engine, tenant_id, mapped["order_items"])
+        _, late_delivery_known = insert_order_items(engine, tenant_id, mapped["order_items"])
+        if late_delivery_known > 0:
+            mark_capability(engine, tenant_id, "supports_late_delivery")
+            print(f"  Marked tenant_id={tenant_id} as supports_late_delivery=TRUE "
+                  f"({late_delivery_known} rows had is_late_delivery).")
 
     print("\nDone.")
 

@@ -1,12 +1,13 @@
+001_canonical_schema
 -- ============================================================
 -- Canonical schema: every tenant (Olist / DataCo / synthetic /
 -- a future client CSV) maps into THESE tables. Models, APIs,
 -- and the agent only ever talk to this schema — never the raw
 -- source columns directly.
 -- ============================================================
-
+ 
 CREATE EXTENSION IF NOT EXISTS vector;
-
+ 
 CREATE TABLE IF NOT EXISTS tenants (
     tenant_id       SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -14,7 +15,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     currency        TEXT DEFAULT 'USD',
     created_at      TIMESTAMP DEFAULT now()
 );
-
+ 
 CREATE TABLE IF NOT EXISTS products (
     product_pk      SERIAL PRIMARY KEY,
     tenant_id       INT REFERENCES tenants(tenant_id),
@@ -26,7 +27,7 @@ CREATE TABLE IF NOT EXISTS products (
     launch_date     DATE,
     UNIQUE(tenant_id, sku_id)
 );
-
+ 
 CREATE TABLE IF NOT EXISTS vendors (
     vendor_pk       SERIAL PRIMARY KEY,
     tenant_id       INT REFERENCES tenants(tenant_id),
@@ -36,7 +37,7 @@ CREATE TABLE IF NOT EXISTS vendors (
     shipping_cost_per_kg    NUMERIC,
     UNIQUE(tenant_id, vendor_id)
 );
-
+ 
 CREATE TABLE IF NOT EXISTS customers (
     customer_pk     SERIAL PRIMARY KEY,
     tenant_id       INT REFERENCES tenants(tenant_id),
@@ -45,7 +46,7 @@ CREATE TABLE IF NOT EXISTS customers (
     segment         TEXT,
     UNIQUE(tenant_id, customer_id)
 );
-
+ 
 CREATE TABLE IF NOT EXISTS orders (
     order_pk        SERIAL PRIMARY KEY,
     tenant_id       INT REFERENCES tenants(tenant_id),
@@ -54,7 +55,7 @@ CREATE TABLE IF NOT EXISTS orders (
     order_date      DATE,
     UNIQUE(tenant_id, order_id)
 );
-
+ 
 CREATE TABLE IF NOT EXISTS order_items (
     order_line_pk   SERIAL PRIMARY KEY,
     tenant_id       INT REFERENCES tenants(tenant_id),
@@ -76,28 +77,28 @@ CREATE TABLE IF NOT EXISTS order_items (
     product_cost    NUMERIC,
     net_profit      NUMERIC
 );
-
+ 
 -- ---------- Model output tables (written by training/inference jobs) ----------
-
+ 
 CREATE TABLE IF NOT EXISTS demand_forecasts (
     id SERIAL PRIMARY KEY,
     tenant_id INT, product_pk INT,
     week_start DATE, predicted_demand NUMERIC,
     model_version TEXT, created_at TIMESTAMP DEFAULT now()
 );
-
+ 
 CREATE TABLE IF NOT EXISTS return_risk_scores (
     id SERIAL PRIMARY KEY,
     tenant_id INT, product_pk INT,
     risk_score NUMERIC, model_version TEXT, created_at TIMESTAMP DEFAULT now()
 );
-
+ 
 CREATE TABLE IF NOT EXISTS vendor_risk_scores (
     id SERIAL PRIMARY KEY,
     tenant_id INT, vendor_pk INT,
     late_rate NUMERIC, risk_score NUMERIC, created_at TIMESTAMP DEFAULT now()
 );
-
+ 
 CREATE TABLE IF NOT EXISTS sku_profit_summary (
     id SERIAL PRIMARY KEY,
     tenant_id INT, product_pk INT, period DATE,
@@ -105,9 +106,18 @@ CREATE TABLE IF NOT EXISTS sku_profit_summary (
     expected_shipping_cost NUMERIC, expected_net_profit NUMERIC,
     created_at TIMESTAMP DEFAULT now()
 );
-
+ 
+CREATE TABLE IF NOT EXISTS tenant_capabilities (
+    tenant_id INT PRIMARY KEY REFERENCES tenants(tenant_id),
+    supports_demand BOOLEAN DEFAULT FALSE,
+    supports_late_delivery BOOLEAN DEFAULT FALSE,
+    supports_return_risk BOOLEAN DEFAULT FALSE,
+    supports_vendor_risk BOOLEAN DEFAULT FALSE,
+    supports_profit BOOLEAN DEFAULT FALSE
+);
+ 
 -- ---------- RAG: nightly SKU report text + embedding ----------
-
+ 
 CREATE TABLE IF NOT EXISTS sku_report_embeddings (
     id SERIAL PRIMARY KEY,
     tenant_id INT, product_pk INT,
@@ -115,3 +125,5 @@ CREATE TABLE IF NOT EXISTS sku_report_embeddings (
     embedding VECTOR(1536),
     created_at TIMESTAMP DEFAULT now()
 );
+ 
+ 

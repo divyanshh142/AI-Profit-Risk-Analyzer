@@ -26,6 +26,19 @@ DB_URL = os.environ.get(
 )
 
 
+def mark_capability(engine, tenant_id: int, column: str):
+    """Flip one supports_* flag on in tenant_capabilities once this job succeeds."""
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"""
+                INSERT INTO tenant_capabilities (tenant_id, {column})
+                VALUES (:tid, TRUE)
+                ON CONFLICT (tenant_id) DO UPDATE SET {column} = TRUE
+            """),
+            {"tid": tenant_id},
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tenant-id", type=int, default=1)
@@ -104,6 +117,10 @@ def main():
     print("\nBottom 5 (losing money predicted):")
     bottom = merged.sort_values("expected_net_profit").head(5)
     print(bottom[["product_pk", "predicted_demand", "expected_net_profit"]])
+
+    if len(merged) > 0:
+        mark_capability(engine, args.tenant_id, "supports_profit")
+        print(f"\nMarked tenant_id={args.tenant_id} as supports_profit=TRUE. Done.")
 
 
 if __name__ == "__main__":

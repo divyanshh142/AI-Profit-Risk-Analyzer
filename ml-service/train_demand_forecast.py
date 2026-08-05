@@ -21,6 +21,19 @@ DB_URL = os.environ.get(
 MIN_WEEKS_HISTORY = 8  # skip SKUs with too little history to learn a pattern
 
 
+def mark_capability(engine, tenant_id: int, column: str):
+    """Flip one supports_* flag on in tenant_capabilities once this job succeeds."""
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"""
+                INSERT INTO tenant_capabilities (tenant_id, {column})
+                VALUES (:tid, TRUE)
+                ON CONFLICT (tenant_id) DO UPDATE SET {column} = TRUE
+            """),
+            {"tid": tenant_id},
+        )
+
+
 def load_weekly_demand(engine, tenant_id: int) -> pd.DataFrame:
     query = text("""
         SELECT
@@ -86,10 +99,14 @@ def main():
     X = features[feature_cols]
     y = features["units_sold"]
 
-    # time-based split: last 15% of rows (by week_start order) held out as validation
+    # time-based split: last 15% of rows, sorted by week_start ALONE (not by
+    # product_pk first) so validation is genuinely "the most recent weeks"
+    # across every SKU, instead of "the tail of each product's block".
+    time_order = features["week_start"].argsort(kind="stable")
+    X_sorted, y_sorted = X.iloc[time_order], y.iloc[time_order]
     split_idx = int(len(features) * 0.85)
-    X_train, X_val = X.iloc[:split_idx], X.iloc[split_idx:]
-    y_train, y_val = y.iloc[:split_idx], y.iloc[split_idx:]
+    X_train, X_val = X_sorted.iloc[:split_idx], X_sorted.iloc[split_idx:]
+    y_train, y_val = y_sorted.iloc[:split_idx], y_sorted.iloc[split_idx:]
 
     print(f"Training LightGBM on {len(X_train)} rows, validating on {len(X_val)}...")
     model = LGBMRegressor(n_estimators=200, learning_rate=0.05, random_state=42)
@@ -127,7 +144,10 @@ def main():
                     "predicted_demand": float(row["predicted_demand"]),
                 },
             )
-    print(f"Wrote {len(latest)} forecast rows. Done.")
+    print(f"Wrote {len(latest)} forecast rows.")
+
+    mark_capability(engine, args.tenant_id, "supports_demand")
+    print(f"Marked tenant_id={args.tenant_id} as supports_demand=TRUE. Done.")
 
 
 if __name__ == "__main__":
