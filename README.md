@@ -280,30 +280,3 @@ The `dags/` directory contains workflow definitions for ingestion and ML tasks. 
 
 The current DAGs should remain paused until paths, tenant arguments, credentials, and runtime environment are parameterized and tested. Manual ingestion and ML runs are the supported development workflow.
 
-## Security rules
-
-- Never commit `.env` files or real credentials.
-- Use `.env.example` only for placeholder values.
-- Rotate any credential that was accidentally exposed.
-- Do not commit generated files such as JVM crash logs, replay logs, virtual environments, `node_modules`, or trained `.pkl` model artifacts.
-- Validate uploaded CSV files before ingestion.
-
-## Development status
-
-Implemented:
-
-- Canonical multi-tenant database schema
-- Olist ingestion and return proxy
-- Full Synthetic Tenant A ingestion
-- FastAPI analytics endpoint foundation
-- React frontend application
-- Spring Boot backend foundation with JWT/RAG work
-- Airflow DAG definitions
-
-In progress:
-
-- Boolean normalization and profit-cost lookup improvements in synthetic ingestion
-- Tenant B and Tenant C preprocessing adapters
-- DataCo schema validation and mapping configuration
-- Parameterized production-ready Airflow execution
-- End-to-end integration tests
