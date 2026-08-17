@@ -1,96 +1,309 @@
-# Profit Intelligence Platform — Local Dev Starter
+# AI Profit & Risk Analyzer
 
-This is Phase 0 + the start of Phase 1 of the build plan. It gets you a real,
-running database with the canonical schema in it — the foundation every
-other piece (models, backend, frontend, agent) will sit on top of.
+A multi-tenant e-commerce analytics platform that ingests datasets with different schemas, converts them into one canonical PostgreSQL schema, and produces demand, return-risk, vendor-risk, and profit insights.
 
-## What's in here and why
+The project includes:
 
+- A PostgreSQL + pgvector database running through Docker Compose
+- Canonical multi-tenant data schema
+- Dataset ingestion through mapping configurations
+- Synthetic tenant data with genuine return labels
+- Python ML/FastAPI service for predictions and summaries
+- Spring Boot backend with authentication and RAG support
+- React + TypeScript frontend dashboard
+- Airflow DAG definitions for future orchestration
+
+## Architecture
+
+```text
+Raw CSV datasets
+    |
+    |-- Olist
+    |-- Synthetic Tenant A
+    |-- Synthetic Tenant B
+    |-- Synthetic Tenant C
+    |-- DataCo (optional, requires validated mapping)
+    |
+    v
+Ingestion + mapping configuration
+    |
+    v
+Canonical PostgreSQL schema
+    |
+    |-- products
+    |-- customers
+    |-- vendors
+    |-- orders
+    |-- order_items
+    |-- tenant_capabilities
+    |
+    v
+ML service and analytics jobs
+    |
+    |-- Demand forecast
+    |-- Return-risk score
+    |-- Vendor-risk score
+    |-- SKU profit summary
+    |
+    v
+Spring Boot API + React dashboard
 ```
-profit-copilot/
-  docker-compose.yml            # Spins up Postgres+pgvector locally. Why pgvector
-                                 # in the same DB instead of a separate vector store:
-                                 # one less service to run/debug for a solo project.
-  db/
-    001_canonical_schema.sql    # The ONE shape all data sources map into.
-                                 # Auto-runs the first time you start the container.
-  ingestion/
-    mapping_configs/
-      olist_mapping.json        # Declares how Olist's raw columns become
-                                 # canonical columns. Add a new tenant by adding
-                                 # a new JSON file here — not new code.
-    load_data.py                # Generic loader that reads any mapping config
-                                 # and previews the rename. (Currently prints a
-                                 # preview — the real DB insert logic is the
-                                 # next thing we build together.)
-    requirements.txt
-  backend/                      # Empty — Spring Boot goes here in Phase 3
-  ml-service/                   # Empty — FastAPI goes here in Phase 2
-  frontend/                     # Empty — React goes here in Phase 4
+
+## Project structure
+
+```text
+AI-Profit-Risk-Analyzer/
+├── backend/
+│   └── backend/                 # Spring Boot backend, JWT security, RAG support
+├── db/
+│   └── 001_canonical_schema.sql # Canonical PostgreSQL schema
+├── dags/                        # Airflow DAG definitions
+├── frontend/                    # React, TypeScript, Vite, Tailwind UI
+├── ingestion/
+│   ├── mapping_configs/         # Dataset-to-canonical-column mappings
+│   ├── load_data.py             # Generic loader for mapped datasets
+│   ├── load_synthetic_tenant.py # Loader for full synthetic tenant data
+│   └── apply_return_proxy.py    # Olist weak return-label proxy
+├── ml-service/
+│   ├── main.py                  # FastAPI analytics endpoints
+│   ├── train_demand_forecast.py
+│   ├── train_return_risk.py
+│   ├── compute_vendor_risk.py
+│   └── compute_profit_summary.py
+├── docker-compose.yml
+└── .env.example
 ```
 
-## Why this structure (the core idea of the whole project)
+## Requirements
 
-Olist, DataCo, and your own synthetic data all have *different* column names
-and don't share any real join key. Instead of writing custom import code for
-each one, every source gets a small JSON "mapping config" that says how its
-columns become canonical columns. Every downstream piece — models, API,
-dashboard, the AI agent — only ever talks to the canonical schema and never
-needs to know where the data originally came from. That one idea is what
-makes this a real multi-tenant platform instead of a one-off script.
+Install:
 
-## Step 1: Get it running (do this first)
+- Docker Desktop
+- Python 3.10 or later
+- Node.js 18 or later
+- Java 17 or later
+- Git
+
+Create a local `.env` file from `.env.example` and provide local credentials there.
 
 ```bash
-cd profit-copilot
+cp .env.example .env
+```
+
+Never commit `.env`, API keys, passwords, service-account files, or generated model files.
+
+## Start the database
+
+From the project root:
+
+### Windows CMD
+
+```cmd
+docker compose up -d
+docker compose ps
+```
+
+Docker Compose starts the services defined in `docker-compose.yml`; the `-d` option leaves them running in the background. [web:501][web:512]
+
+To reset all local database data:
+
+```cmd
+docker compose down -v
 docker compose up -d
 ```
 
-Then check:
-- `http://localhost:5050` → pgadmin (login: admin@local.dev / admin) —
-  connect to host `postgres`, user `copilot`, password `copilot_dev_pw`,
-  db `profit_copilot`
-- You should see all the canonical tables already created (tenants, products,
-  orders, order_items, demand_forecasts, etc.) — the schema SQL auto-ran.
+Warning: `docker compose down -v` deletes Compose-managed database volumes and permanently removes local database data.
 
-## Step 2: Verify the real datasets (don't skip this)
+## Database access
 
-The DataCo columns you have came from a web search, not the real file.
-Before we build the DataCo mapping config:
+If pgAdmin is enabled in your `docker-compose.yml`, open:
 
-1. Download the real CSVs:
-   - Olist: https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce
-   - DataCo: https://www.kaggle.com/datasets/shashwatwork/dataco-smart-supply-chain-for-big-data-analysis
-2. Put Olist CSVs in `ingestion/raw_data/olist/`
-3. Run, in a venv:
-   ```bash
-   pip install -r ingestion/requirements.txt
-   python ingestion/load_data.py --config ingestion/mapping_configs/olist_mapping.json --raw-dir ingestion/raw_data/olist
-   ```
-4. For DataCo, open it in pandas and check `df.columns`, `df.isna().sum()`,
-   and specifically whether any column represents an actual return/cancellation
-   — not just `Late_delivery_risk`. Report back what you find and we'll write
-   its mapping config next.
+```text
+http://localhost:5050
+```
 
-## Known gap to design around, not ignore
+Use the database values defined in your local `.env` or Compose configuration. Do not put real usernames or passwords in this README.
 
-**Neither Olist nor DataCo has a genuine row-level "was this returned"
-label.** The plan is:
-- Olist → derive a *weak proxy* (`review_score <= 2` → `is_returned_proxy = TRUE`)
-- Your own **synthetic tenant generator** (not built yet — this is the next
-  real piece of code we need to write) → the actual source of ground-truth
-  `is_returned` labels for training the return-risk model
-- DataCo → optional third tenant, useful for delivery/profit, not returns
+The canonical schema is initialized from:
 
-## What's next (in order)
+```text
+db/001_canonical_schema.sql
+```
 
-1. ✅ Repo + local Postgres + canonical schema (this delivery)
-2. ⬜ Verify DataCo's real columns, confirm the no-return-label finding
-3. ⬜ Write the real insert logic in `load_data.py` (currently just previews)
-4. ⬜ Build the synthetic tenant generator (Tenant A/B/C, 3 different schemas,
-   with real `is_returned`, `return_reason`, `net_profit` labels)
-5. ⬜ Start the FastAPI ml-service skeleton (Phase 2)
+## Dataset ingestion
 
-Tell me when Step 1 and Step 2 above are done (or if `docker compose up`
-throws an error) and we'll build the synthetic generator + real ingestion
-logic together next.
+All source datasets are mapped into the same canonical schema. This lets downstream analytics work without needing dataset-specific code.
+
+### Olist
+
+Download the Brazilian E-Commerce Public Dataset by Olist and place the CSV files in a local directory.
+
+From the project root:
+
+```cmd
+.venv\Scripts\Activate.bat
+python ingestion\load_data.py --config ingestion\mapping_configs\olist_mapping.json --raw-dir D:\path\to\olist
+python ingestion\apply_return_proxy.py --raw-dir D:\path\to\olist --tenant-id 1
+```
+
+Olist does not provide a genuine row-level return label. The project creates a weak return proxy from low review scores for profit estimation only. It should not be used as ground truth to train the return-risk classifier.
+
+### Synthetic Tenant A
+
+Synthetic Tenant A contains full product, customer, order, vendor, delivery, cost, and genuine return-label data.
+
+```cmd
+python ingestion\load_synthetic_tenant.py --config ingestion\mapping_configs\synthetic_a_mapping.json --raw-dir D:\path\to\synthetic_data\tenant_A_full
+```
+
+Tenant A supports:
+
+- Demand forecasting
+- Return-risk training and scoring
+- Vendor-risk scoring
+- Late-delivery analysis
+- Profit summaries
+
+### Synthetic Tenant B
+
+Tenant B is a partial sales export with order date, SKU, quantity, price, ETA, and delivered date.
+
+It can support:
+
+- Demand forecasting
+- Late-delivery analysis
+
+It cannot support genuine return-risk training or vendor-risk scoring because it has no return or vendor fields. A preprocessing adapter is required before it can use the full synthetic loader because its source schema differs from Tenant A.
+
+### Synthetic Tenant C
+
+Tenant C is a minimal sales export with date, item ID, units, and price.
+
+It supports:
+
+- Basic demand forecasting
+
+It does not support return risk, vendor risk, late-delivery analysis, or real profit analysis because cost, shipping, delivery, vendor, and return fields are absent. A preprocessing adapter is required before ingestion.
+
+### DataCo
+
+DataCo is optional. Before loading it, inspect the real CSV headers and create a validated mapping configuration. Do not assume source columns or return labels without checking the downloaded dataset.
+
+## ML jobs
+
+Activate the Python environment and move to the ML service directory:
+
+```cmd
+cd /d D:\path\to\AI-Profit-Risk-Analyzer\ml-service
+```
+
+Run jobs with an explicit tenant ID.
+
+### Tenant 1: Olist
+
+```cmd
+python train_demand_forecast.py --tenant-id 1
+python compute_vendor_risk.py --tenant-id 1
+python compute_profit_summary.py --tenant-id 1
+```
+
+Do not train the return-risk model on Olist because its return signal is only a proxy.
+
+### Tenant 2: Synthetic Tenant A
+
+```cmd
+python train_demand_forecast.py --tenant-id 2
+python train_return_risk.py --tenant-id 2
+python compute_vendor_risk.py --tenant-id 2
+python compute_profit_summary.py --tenant-id 2
+```
+
+Run equivalent jobs for other tenants only when their available fields support those jobs.
+
+## Start the ML API
+
+From `ml-service`:
+
+```cmd
+uvicorn main:app --reload --port 8000
+```
+
+Check health:
+
+```cmd
+curl http://localhost:8000/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+Useful endpoint example:
+
+```text
+GET http://localhost:8000/profit-summary?tenant_id=2&limit=10&order=top
+```
+
+## Start the frontend
+
+From the project root:
+
+```cmd
+cd frontend
+npm install
+npm run dev
+```
+
+Open the Vite URL shown in the terminal, commonly:
+
+```text
+http://localhost:5173
+```
+
+## Start the backend
+
+From the Spring Boot backend directory:
+
+```cmd
+cd backend\backend
+```
+
+Run the application using your local Maven wrapper or IDE configuration.
+
+Keep credentials in environment variables or local `.env` files. The backend must never contain committed API keys.
+
+## Airflow DAGs
+
+The `dags/` directory contains workflow definitions for ingestion and ML tasks. In Airflow, a DAG defines tasks and their execution dependencies. [web:509][web:263]
+
+The current DAGs should remain paused until paths, tenant arguments, credentials, and runtime environment are parameterized and tested. Manual ingestion and ML runs are the supported development workflow.
+
+## Security rules
+
+- Never commit `.env` files or real credentials.
+- Use `.env.example` only for placeholder values.
+- Rotate any credential that was accidentally exposed.
+- Do not commit generated files such as JVM crash logs, replay logs, virtual environments, `node_modules`, or trained `.pkl` model artifacts.
+- Validate uploaded CSV files before ingestion.
+
+## Development status
+
+Implemented:
+
+- Canonical multi-tenant database schema
+- Olist ingestion and return proxy
+- Full Synthetic Tenant A ingestion
+- FastAPI analytics endpoint foundation
+- React frontend application
+- Spring Boot backend foundation with JWT/RAG work
+- Airflow DAG definitions
+
+In progress:
+
+- Boolean normalization and profit-cost lookup improvements in synthetic ingestion
+- Tenant B and Tenant C preprocessing adapters
+- DataCo schema validation and mapping configuration
+- Parameterized production-ready Airflow execution
+- End-to-end integration tests
