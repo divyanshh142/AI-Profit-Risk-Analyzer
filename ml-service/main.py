@@ -60,7 +60,7 @@ def get_capabilities(tenant_id: int):
 
 
 @app.get("/forecast/{sku_id}")
-def get_forecast(sku_id: str, tenant_id: int = 1):
+def get_forecast(sku_id: str, tenant_id: int):
     require_capability(tenant_id, "supports_demand", "demand forecasting")
     query = text("""
         SELECT df.week_start, df.predicted_demand, df.model_version
@@ -77,7 +77,7 @@ def get_forecast(sku_id: str, tenant_id: int = 1):
 
 
 @app.get("/return-risk/{sku_id}")
-def get_return_risk(sku_id: str, tenant_id: int = 2):
+def get_return_risk(sku_id: str, tenant_id: int):
     require_capability(tenant_id, "supports_return_risk", "return-risk scoring")
     query = text("""
         SELECT rr.risk_score, rr.model_version
@@ -94,7 +94,7 @@ def get_return_risk(sku_id: str, tenant_id: int = 2):
 
 
 @app.get("/vendor-risk/{vendor_id}")
-def get_vendor_risk(vendor_id: str, tenant_id: int = 1):
+def get_vendor_risk(vendor_id: str, tenant_id: int):
     require_capability(tenant_id, "supports_vendor_risk", "vendor-risk scoring")
     query = text("""
         SELECT vr.late_rate, vr.risk_score
@@ -111,7 +111,7 @@ def get_vendor_risk(vendor_id: str, tenant_id: int = 1):
 
 
 @app.get("/profit-summary")
-def get_profit_summary(tenant_id: int = 1, limit: int = 10, order: str = "top"):
+def get_profit_summary(tenant_id: int, limit: int = 10, order: str = "top"):
     require_capability(tenant_id, "supports_profit", "profit summaries")
     direction = "DESC" if order == "top" else "ASC"
     query = text(f"""
@@ -135,7 +135,7 @@ def get_profit_summary(tenant_id: int = 1, limit: int = 10, order: str = "top"):
 
 
 @app.get("/risky-products")
-def risky_products(tenant_id_forecast: int = 1, tenant_id_risk: int = 2, limit: int = 10):
+def risky_products(tenant_id_forecast: int, tenant_id_risk: int, limit: int = 10):
     """Blends Olist demand forecast with synthetic-model category-level return risk
     (can't match by SKU ID across tenants — different catalogs — so we match by category)."""
     require_capability(tenant_id_forecast, "supports_demand", "demand forecasting")

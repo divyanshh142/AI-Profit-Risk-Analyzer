@@ -23,3 +23,10 @@ target/
 
 # OS
 .DS_Store
+
+# JVM crash and replay files
+hs_err_pid*.log
+replay_pid*.log
+
+# Generated ML artifacts
+ml-service/models/*.pkl
